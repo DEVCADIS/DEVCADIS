@@ -1,5 +1,3 @@
-# ⚡ RENEGADES_MD (alias DEVCADIS) ⚡
-
 ```{=html}
 <p align="center">
 ```
@@ -7,7 +5,7 @@
 ```{=html}
 </p>
 ```
-
+# ⚡ RENEGADES_MD (alias DEVCADIS) ⚡
 ------------------------------------------------------------------------
 
 ## 📌 Description
