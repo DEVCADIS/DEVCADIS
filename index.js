@@ -52,7 +52,7 @@ const logger = pino({
 // === Config utilisateurs ===
 const CONFIG_PATH = path.join("./config.json");
 function getConfig() {
-  if (!fs.existsSync(CONFIG_PATH)) fs.writeFileSync(CONFIG_PATH, JSON.stringify({ users: {} }, null, 2));
+  if (!fs.existsSync(CONFIG_PATH)) fs.writeFileSync(CONFIG_PATH, JSON.stringify({ users: {}, owners: [] }, null, 2));
   return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
 }
 function saveConfig(configFile) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(configFile, null, 2)); }
@@ -93,7 +93,6 @@ function setOwner(user) {
   }
 
   saveConfig(cfg);
-  console.log(chalk.green(`✅ Propriétaires définis : ${cfg.owners.join(", ")}`));
   return cfg.owners;
 }
 
@@ -142,10 +141,6 @@ async function requestPairingCode(sock) {
   }
 }
 
-// === Lancement direct du bot (sans mot de passe) ===
-console.log(chalk.green("💀 DEV-RAIZEL-BOT DEMARRAGE 💀"));
-startBot();
-
 // === Lancement bot ===
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
@@ -173,20 +168,10 @@ async function startBot() {
       console.log(chalk.green("✅ Bot connecté et authentifié avec succès !"));
       afficherBanner();
 
-      const ownerId = sock.user?.id?.split(":")[0].replace(/@s\.whatsapp\.net$/, "");
-      const ownerLid = sock.user?.lid?.split(":")[0].replace(/@lid$/, "");
-
-      const ownerIdBare = getBareNumber(ownerId);
-      const ownerLidBare = getBareNumber(ownerLid);
-
-      global.owners = [ownerIdBare];
-      if (ownerLidBare) global.owners.push(ownerLidBare);
-
-      console.log(chalk.green(`✅ Propriétaires définis : ${ownerIdBare} (ID), ${ownerLidBare} (LID)`));
-      console.log(chalk.yellow("👋 Ces identifiants sont autorisés à exécuter le bot."));
-      console.log("DEBUG sock.user =", sock.user);
-
+      // Définir propriétaires dès la connexion
       const owners = setOwner(sock.user);
+      global.owners = owners;
+
       console.log(chalk.green(`✅ Propriétaires définis : ${owners.join(", ")}`));
       console.log(chalk.yellow(`👋 Seuls ${owners.join(", ")} pourront utiliser le bot.`));
     }
@@ -257,30 +242,26 @@ async function startBot() {
     if (realSenderJid && realSenderJid.includes("@lid")) {
       try {
         realSenderJid = sock.decodeJid(realSenderJid);
-        console.log("DEBUG decodeJid ->", realSenderJid);
       } catch (e) {
         console.log("DEBUG impossible decodeJid pour", realSenderJid);
       }
     }
 
     const senderNum = getBareNumber(realSenderJid);
-    console.log("DEBUG from =", from, "| isGroup =", isGroup, "| participant =", msg.key.participant, "| senderNum =", senderNum);
 
     const inner = unwrapMessage(msg.message);
     const text = pickText(inner);
-    if (!text) {
-      console.log("DEBUG: aucun texte extrait (type message) =>", Object.keys(msg.message || {}));
-      return;
-    }
+    if (!text) return;
 
     const senderBare = getBareNumber(senderNum);
-    const ownersBare = (global.owners || []).map(getBareNumber);
+
+    // Toujours recharger les owners depuis config.json
+    const ownersBare = (getConfig().owners || []).map(getBareNumber);
 
     if (!ownersBare.includes(senderBare)) {
       return;
     } else {
-      const type = senderNum.includes("@lid") ? "LID" : "ID";
-      console.log(`📩 Commande du propriétaire détectée (${type}): ${senderBare} → ${text}`);
+      console.log(`📩 Commande propriétaire: ${senderBare} → ${text}`);
     }
 
     let userPrefs = getUserConfig(from) || {};
@@ -299,3 +280,5 @@ async function startBot() {
     }
   });
 }
+
+startBot();
