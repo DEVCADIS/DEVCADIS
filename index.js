@@ -1,4 +1,4 @@
-// === Normaliser un JID pour supprimer les suffixes type ":30" ===
+// === Normaliser un JID ===
 function normalizeJid(jid) {
   if (!jid) return null;
   return jid.split(":")[0].replace(/@lid$/, "") + "@s.whatsapp.net";
@@ -49,20 +49,6 @@ const logger = pino({
   base: null
 });
 
-// === Config utilisateurs ===
-const CONFIG_PATH = path.join("./config.json");
-function getConfig() {
-  if (!fs.existsSync(CONFIG_PATH)) fs.writeFileSync(CONFIG_PATH, JSON.stringify({ users: {} }, null, 2));
-  return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
-}
-function saveConfig(configFile) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(configFile, null, 2)); }
-function getUserConfig(number) { return getConfig().users[number] || null; }
-function setUserConfig(number, data) {
-  const cfg = getConfig();
-  cfg.users[number] = { ...(cfg.users[number] || {}), ...data };
-  saveConfig(cfg);
-}
-
 // === Helpers numéros ===
 function getBareNumber(input) {
   if (!input) return "";
@@ -70,31 +56,6 @@ function getBareNumber(input) {
   const beforeAt = s.split("@")[0];
   const beforeColon = beforeAt.split(":")[0];
   return beforeColon.replace(/[^0-9]/g, "");
-}
-
-// === Définir automatiquement les propriétaires ===
-function setOwner(user) {
-  const cfg = getConfig();
-  if (!cfg.owners) cfg.owners = [];
-
-  const mainJid = normalizeJid(user?.id);
-  if (mainJid) {
-    const num = getBareNumber(mainJid);
-    if (num && !cfg.owners.includes(num)) {
-      cfg.owners.push(num);
-    }
-  }
-
-  if (user?.lid) {
-    const numLid = getBareNumber(user.lid);
-    if (numLid && !cfg.owners.includes(numLid)) {
-      cfg.owners.push(numLid);
-    }
-  }
-
-  saveConfig(cfg);
-  console.log(chalk.green(`✅ Propriétaires définis : ${cfg.owners.join(", ")}`));
-  return cfg.owners;
 }
 
 // === Helpers message ===
@@ -119,30 +80,7 @@ function pickText(m) {
          m?.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
 }
 
-// === Banner ASCII ===
-function afficherBanner() {
-  console.log(`
-🎉 DEV-RAIZEL 🎉
-`);
-}
-
-// === Pairing code ===
-async function requestPairingCode(sock) {
-  try {
-    logger.info("Demande de code pairing pour " + config.NUMBER);
-    const pairingCode = await sock.requestPairingCode(config.NUMBER);
-
-    const intervalId = setInterval(() => {
-      logger.info("🔑 Code de pairing: " + pairingCode + " (Valable 20s)");
-    }, 5000);
-
-    setTimeout(() => clearInterval(intervalId), 20000);
-  } catch (error) {
-    logger.error({ error }, "❌ Échec de la demande de code pairing");
-  }
-}
-
-// === Résolution fiable de l'expéditeur ===
+// === Résolution expéditeur ===
 function resolveSenderJid(msg, sock) {
   const from = msg.key.remoteJid;
   const isGroup = (from || "").endsWith("@g.us");
@@ -177,6 +115,13 @@ function resolveSenderJid(msg, sock) {
   return realSenderJid;
 }
 
+// === Banner ASCII ===
+function afficherBanner() {
+  console.log(`
+🎉 DEV-RAIZEL - MODE DEBUG 🎉
+`);
+}
+
 // === Lancement bot ===
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
@@ -203,11 +148,6 @@ async function startBot() {
     if (connection === "open") {
       console.log(chalk.green("✅ Bot connecté et authentifié avec succès !"));
       afficherBanner();
-
-      const owners = setOwner(sock.user);
-      global.owners = owners.map(getBareNumber);
-
-      console.log(chalk.yellow(`👋 Seuls ${owners.join(", ")} pourront utiliser le bot.`));
     }
     if (connection === "close") {
       const reason = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.message;
@@ -237,46 +177,49 @@ async function startBot() {
     commands[command.name] = command;
   }
 
-  // Pairing si pas enregistré
-  setTimeout(async () => {
-    if (!state.creds.registered && !config.USE_QR) {
-      await requestPairingCode(sock);
-    }
-  }, 2000);
-
-  // === Gestion des messages ===
+  // === Gestion des messages (DEBUG) ===
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
 
     const from = msg.key.remoteJid;
-    const isGroup = (from || "").endsWith("@g.us");
-    const realSenderJid = resolveSenderJid(msg, sock);
-    const senderNum = getBareNumber(realSenderJid);
+    const isGroup = from.endsWith("@g.us");
+    const sender = resolveSenderJid(msg, sock);
+    const senderNum = getBareNumber(sender);
 
-    console.log("DEBUG from =", from, "| isGroup =", isGroup, "| senderNum =", senderNum);
+    console.log("=== NOUVEAU MESSAGE ===");
+    console.log("from:", from);
+    console.log("isGroup:", isGroup);
+    console.log("sender:", sender);
+    console.log("senderNum:", senderNum);
+    console.log("contenu brut:", JSON.stringify(msg.message, null, 2));
 
+    // Récupération texte
     const inner = unwrapMessage(msg.message);
-    const text = pickText(inner);
+    let text = pickText(inner);
+
+    if (!text) {
+      // fallback brut
+      text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";
+    }
+
     if (!text) return;
+    console.log("Texte détecté:", text);
 
-    const ownersBare = (global.owners || []).map(getBareNumber);
-    if (!ownersBare.includes(senderNum)) return;
+    // Pas de filtre propriétaire (test)
+    const prefix = config.PREFIXE_COMMANDE || "!";
+    if (!text.startsWith(prefix)) return;
 
-    console.log(`📩 Commande du propriétaire détectée : ${senderNum} → ${text}`);
-
-    let userPrefs = getUserConfig(from) || {};
-    if (!userPrefs.prefix) userPrefs.prefix = config.PREFIXE_COMMANDE;
-
-    if (!text.startsWith(userPrefs.prefix)) return;
-    const args = text.slice(userPrefs.prefix.length).trim().split(/ +/);
+    const args = text.slice(prefix.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
+
+    console.log(`Commande détectée: ${cmd} | args:`, args);
 
     if (commands[cmd]) {
       try {
         await commands[cmd].execute(sock, msg, args, from);
       } catch (err) {
-        console.error(chalk.red(`Erreur commande ${cmd} :`), err);
+        console.error("Erreur commande:", err);
       }
     }
   });
