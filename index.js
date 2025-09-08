@@ -1,7 +1,7 @@
-// Normaliser un JID pour supprimer les suffixes type ":30"
+// === Normaliser un JID pour supprimer les suffixes type ":30" ===
 function normalizeJid(jid) {
   if (!jid) return null;
-  return jid.split(":")[0] + "@s.whatsapp.net";
+  return jid.split(":")[0].replace(/@lid$/, "") + "@s.whatsapp.net";
 }
 
 import {
@@ -39,7 +39,7 @@ const config = {
   RECONNECT_DELAY: parseInt(process.env.RECONNECT_DELAY) || 5000
 };
 
-// Logger
+// === Logger ===
 const logger = pino({
   level: config.LOG_LEVEL,
   transport: {
@@ -52,7 +52,7 @@ const logger = pino({
 // === Config utilisateurs ===
 const CONFIG_PATH = path.join("./config.json");
 function getConfig() {
-  if (!fs.existsSync(CONFIG_PATH)) fs.writeFileSync(CONFIG_PATH, JSON.stringify({ users: {}, owners: [] }, null, 2));
+  if (!fs.existsSync(CONFIG_PATH)) fs.writeFileSync(CONFIG_PATH, JSON.stringify({ users: {} }, null, 2));
   return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
 }
 function saveConfig(configFile) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(configFile, null, 2)); }
@@ -93,6 +93,7 @@ function setOwner(user) {
   }
 
   saveConfig(cfg);
+  console.log(chalk.green(`✅ Propriétaires définis : ${cfg.owners.join(", ")}`));
   return cfg.owners;
 }
 
@@ -141,6 +142,41 @@ async function requestPairingCode(sock) {
   }
 }
 
+// === Résolution fiable de l'expéditeur ===
+function resolveSenderJid(msg, sock) {
+  const from = msg.key.remoteJid;
+  const isGroup = (from || "").endsWith("@g.us");
+
+  let realSenderJid;
+  if (msg.key.fromMe) {
+    realSenderJid = sock.user.id;
+  } else if (isGroup) {
+    realSenderJid = msg.key.participant || msg.participant;
+    if (!realSenderJid) {
+      realSenderJid =
+        msg.message?.extendedTextMessage?.contextInfo?.participant ||
+        msg.message?.imageMessage?.contextInfo?.participant ||
+        msg.message?.videoMessage?.contextInfo?.participant ||
+        msg.message?.buttonsResponseMessage?.contextInfo?.participant ||
+        msg.message?.listResponseMessage?.contextInfo?.participant ||
+        msg.message?.templateButtonReplyMessage?.contextInfo?.participant;
+    }
+    if (!realSenderJid) realSenderJid = from;
+  } else {
+    realSenderJid = from;
+  }
+
+  // Corrige les LIDs
+  if (realSenderJid && realSenderJid.includes("@lid")) {
+    try {
+      realSenderJid = sock.decodeJid(realSenderJid);
+    } catch (e) {
+      console.log("DEBUG impossible decodeJid pour", realSenderJid);
+    }
+  }
+  return realSenderJid;
+}
+
 // === Lancement bot ===
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
@@ -168,11 +204,9 @@ async function startBot() {
       console.log(chalk.green("✅ Bot connecté et authentifié avec succès !"));
       afficherBanner();
 
-      // Définir propriétaires dès la connexion
       const owners = setOwner(sock.user);
-      global.owners = owners;
+      global.owners = owners.map(getBareNumber);
 
-      console.log(chalk.green(`✅ Propriétaires définis : ${owners.join(", ")}`));
       console.log(chalk.yellow(`👋 Seuls ${owners.join(", ")} pourront utiliser le bot.`));
     }
     if (connection === "close") {
@@ -195,7 +229,7 @@ async function startBot() {
   autorecordingEvents(sock);
   statusReactEvents(sock);
 
-  // Charger commandes
+  // === Charger commandes ===
   const commands = {};
   const commandFiles = fs.readdirSync(path.join("./commands")).filter(f => f.endsWith(".js"));
   for (const file of commandFiles) {
@@ -210,59 +244,26 @@ async function startBot() {
     }
   }, 2000);
 
-  // Gestion messages (commande)
+  // === Gestion des messages ===
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
 
     const from = msg.key.remoteJid;
     const isGroup = (from || "").endsWith("@g.us");
-
-    let realSenderJid;
-    if (msg.key.fromMe) {
-      realSenderJid = sock.user.id;
-    } else if (isGroup) {
-      realSenderJid = msg.key.participant || msg.participant;
-      if (!realSenderJid) {
-        realSenderJid =
-          msg.message?.extendedTextMessage?.contextInfo?.participant ||
-          msg.message?.imageMessage?.contextInfo?.participant ||
-          msg.message?.videoMessage?.contextInfo?.participant ||
-          msg.message?.buttonsResponseMessage?.contextInfo?.participant ||
-          msg.message?.listResponseMessage?.contextInfo?.participant ||
-          msg.message?.templateButtonReplyMessage?.contextInfo?.participant;
-      }
-      if (!realSenderJid) {
-        realSenderJid = msg.key.remoteJid;
-      }
-    } else {
-      realSenderJid = msg.key.remoteJid;
-    }
-
-    if (realSenderJid && realSenderJid.includes("@lid")) {
-      try {
-        realSenderJid = sock.decodeJid(realSenderJid);
-      } catch (e) {
-        console.log("DEBUG impossible decodeJid pour", realSenderJid);
-      }
-    }
-
+    const realSenderJid = resolveSenderJid(msg, sock);
     const senderNum = getBareNumber(realSenderJid);
+
+    console.log("DEBUG from =", from, "| isGroup =", isGroup, "| senderNum =", senderNum);
 
     const inner = unwrapMessage(msg.message);
     const text = pickText(inner);
     if (!text) return;
 
-    const senderBare = getBareNumber(senderNum);
+    const ownersBare = (global.owners || []).map(getBareNumber);
+    if (!ownersBare.includes(senderNum)) return;
 
-    // Toujours recharger les owners depuis config.json
-    const ownersBare = (getConfig().owners || []).map(getBareNumber);
-
-    if (!ownersBare.includes(senderBare)) {
-      return;
-    } else {
-      console.log(`📩 Commande propriétaire: ${senderBare} → ${text}`);
-    }
+    console.log(`📩 Commande du propriétaire détectée : ${senderNum} → ${text}`);
 
     let userPrefs = getUserConfig(from) || {};
     if (!userPrefs.prefix) userPrefs.prefix = config.PREFIXE_COMMANDE;
