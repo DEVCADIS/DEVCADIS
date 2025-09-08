@@ -104,7 +104,6 @@ function resolveSenderJid(msg, sock) {
     realSenderJid = from;
   }
 
-  // Corrige les LIDs
   if (realSenderJid && realSenderJid.includes("@lid")) {
     try {
       realSenderJid = sock.decodeJid(realSenderJid);
@@ -120,6 +119,22 @@ function afficherBanner() {
   console.log(`
 🎉 DEV-RAIZEL - MODE DEBUG 🎉
 `);
+}
+
+// === Pairing code ===
+async function requestPairingCode(sock) {
+  try {
+    logger.info("Demande de code pairing pour " + config.NUMBER);
+    const pairingCode = await sock.requestPairingCode(config.NUMBER);
+
+    const intervalId = setInterval(() => {
+      logger.info("🔑 Code de pairing: " + pairingCode + " (Valable 20s)");
+    }, 5000);
+
+    setTimeout(() => clearInterval(intervalId), 20000);
+  } catch (error) {
+    logger.error({ error }, "❌ Échec de la demande de code pairing");
+  }
 }
 
 // === Lancement bot ===
@@ -144,11 +159,15 @@ async function startBot() {
     if (qr && config.USE_QR) {
       console.log("\n📲 Scannez ce QR avec WhatsApp :");
       qrcode.generate(qr, { small: true });
+    } else if (!config.USE_QR && connection === "connecting") {
+      requestPairingCode(sock);
     }
+
     if (connection === "open") {
       console.log(chalk.green("✅ Bot connecté et authentifié avec succès !"));
       afficherBanner();
     }
+
     if (connection === "close") {
       const reason = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.message;
       console.log(chalk.red("❌ Déconnecté :", reason));
@@ -194,19 +213,16 @@ async function startBot() {
     console.log("senderNum:", senderNum);
     console.log("contenu brut:", JSON.stringify(msg.message, null, 2));
 
-    // Récupération texte
     const inner = unwrapMessage(msg.message);
     let text = pickText(inner);
 
     if (!text) {
-      // fallback brut
       text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || "";
     }
 
     if (!text) return;
     console.log("Texte détecté:", text);
 
-    // Pas de filtre propriétaire (test)
     const prefix = config.PREFIXE_COMMANDE || "!";
     if (!text.startsWith(prefix)) return;
 
