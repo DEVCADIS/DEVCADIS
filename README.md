@@ -1,9 +1,7 @@
-```{=html}
 <p align="center">
-```
-`<img src="https://files.catbox.moe/jvwq8s.jpeg" alt="RENEGADES_MD Banner" width="90%"/>`{=html}
-```{=html}
+  <img src="https://files.catbox.moe/jvwq8s.jpeg" alt="RENEGADES_MD Banner" width="90%"/>
 </p>
+
 ```
 # ⚡ RENEGADES_MD (alias DEVCADIS) ⚡
 ------------------------------------------------------------------------
