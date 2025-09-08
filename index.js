@@ -15,12 +15,10 @@ import {
 import chalk from "chalk";
 import fs from "fs";
 import path from "path";
-import readline from "readline";
 import pino from "pino";
 import qrcode from "qrcode-terminal";
 import dotenv from "dotenv";
 
-import { startupPassword } from "./token.js";
 import { initProtections } from "./protections.js";
 
 // === Modules d'événements spéciaux ===
@@ -144,20 +142,9 @@ async function requestPairingCode(sock) {
   }
 }
 
-// === Mot de passe démarrage ===
-console.log(chalk.green("💀 DEV-RAIZEL-BOT DEMARRAGE 💀\n🔑 Entrez le mot de passe :"));
-
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-rl.question("🔑 Entrez le mot de passe : ", async (password) => {
-  if (password !== startupPassword) {
-    console.log(chalk.red("❌ Mot de passe incorrect, fermeture..."));
-    process.exit(0);
-  }
-
-  console.log(chalk.green("✅ Mot de passe accepté, démarrage du bot..."));
-  rl.close();
-  await startBot();
-});
+// === Lancement direct du bot (sans mot de passe) ===
+console.log(chalk.green("💀 DEV-RAIZEL-BOT DEMARRAGE 💀"));
+startBot();
 
 // === Lancement bot ===
 async function startBot() {
