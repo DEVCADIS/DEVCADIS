@@ -68,8 +68,7 @@ Crée un fichier **`.env`** à la racine avec les variables suivantes :
 ``` env
 PREFIXE=.
 DOSSIER_AUTH=auth_baileys
-NUMBER=237xxxx
-OWNER=237xxxx  
+NUMBER=237xxxx 
 USE_QR=false
 LOG_LEVEL=info
 RECONNECT_DELAY=5000
