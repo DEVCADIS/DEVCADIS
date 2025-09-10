@@ -45,12 +45,15 @@ export async function execute(sock, msg, args) {
 │ ping
 │ owner
 │ ai
+│ device
+│ sudo
+│ delsudo
+│ listsudo
 │ delete
 ╰────────────────────╯
 
 ╭───👾 PRUDENCE 👾───╮
 │ tagcreator
-│ Vortex
 │ kickadmin
 │ antilink
 │ antipromote
@@ -73,10 +76,23 @@ export async function execute(sock, msg, args) {
 │ pp
 ╰────────────────────╯
 
+╭───☠️BUG FAMILY☠️ ───╮
+│ scrash
+│ sinivicrash
+│ siosinvis
+│ delay
+│ vortex
+╰────────────────────╯
+
 ╭───♾️ OPTIONS ───╮
 │ help
 │ infos
 │ inviteClan
+╰────────────────╯
+
+╭───♾️ PREMIUM ───╮
+│ connect
+│ disconnect
 ╰────────────────╯
 
 ✨ ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝘋𝘌𝘝-𝘙𝘈𝘐𝘡𝘌𝘓 👑
